@@ -7,6 +7,9 @@
 #include "shell_builtins.h"
 #include "parser.h"
 
+#include <unistd.h>
+#include <sys/wait.h>
+
 /**
  * dispatch_external_command() - run a pipeline of commands
  *
@@ -25,7 +28,33 @@
  * pipeline.
  */
 static int dispatch_external_command(struct command *pipeline)
-{
+{	
+	int status = 0;
+	//Ceates a new process by duplicating the calling process
+	int child_pid = fork(); //parent waitpid()
+
+	if (child_pid < 0) {
+		fprintf(stderr, "fork failed\n");
+		exit(1);
+	} 
+	else if (child_pid == 0) {
+		execvp(pipeline->argv[0],pipeline->argv); 
+		perror("execvp");
+		return -1; 			//child failed - returns dispatch pass the results of the chain
+	}
+	else if (child_pid > 0) {
+		waitpid(child_pid,&status, 0);
+		//Returns the exit status of the child. 
+	}
+
+	return status;
+	
+	
+}
+
+
+
+
 	/*
 	 * Note: this is where you'll start implementing the project.
 	 *
@@ -50,9 +79,12 @@ static int dispatch_external_command(struct command *pipeline)
 	 *
 	 * Good luck!
 	 */
-	fprintf(stderr, "TODO: handle external commands\n");
-	return -1;
-}
+
+
+
+
+	
+
 
 /**
  * dispatch_parsed_command() - run a command after it has been parsed
