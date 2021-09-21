@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "dispatcher.h"
 #include "shell_builtins.h"
@@ -27,64 +29,109 @@
  * Return: The return status of the last command executed in the
  * pipeline.
  */
+
+//Does this need to be in dispatcher.h?
+static int spawn_child(int in, int out, struct command *pipeline)
+{
+	//Dup2 write
+
+	//Dup2 read 
+
+	//Execvp()
+
+	//Check if there is another pipe & call spawn_child(pipe output, output,command)
+
+
+
+}
 static int dispatch_external_command(struct command *pipeline)
 {	
-	int status = 0;
+	//STDIN_FILENO
+	//STDOUT_FILENO - file decriptor
+
+	int status = 0; 
+	int fd[2]; //list of 2 ints
+
+	//1. Check if the command has > or >>
+
+	//2. Check if the command has <
+
+	//3. Check if command has a pipe
+
+	if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
+		pipe(fd);
+	}
+	
 	//Ceates a new process by duplicating the calling process
-	int child_pid = fork(); //parent waitpid()
+	int child_pid = fork(); 
+	
 
 	if (child_pid < 0) {
 		fprintf(stderr, "fork failed\n");
 		exit(1);
 	} 
 	else if (child_pid == 0) {
-		execvp(pipeline->argv[0],pipeline->argv); 
-		perror("execvp");
-		return -1; 			//child failed - returns dispatch pass the results of the chain
+		if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
+			close(fd[0]);		//Close read end
+			dup2(fd[2], STDOUT_FILENO); //Child closes read end, pipe filled. 
+			execvp(pipeline->argv[0],pipeline->argv); 
+			perror("execvp");
+			return -1; 
+		}
+		//Write output  (> and >>)
+		if ((pipeline->output_type == COMMAND_OUTPUT_FILE_APPEND) || (pipeline->output_type == COMMAND_OUTPUT_FILE_TRUNCATE)) {
+			//file = 0 //flags read and write 
+			int fd_write = open(pipeline->output_filename,O_RDWR|O_APPEND,0644);
+			dup2(fd[1],fd_write); 
+			execvp(pipeline->argv[0],pipeline->argv); 
+			perror("execvp");
+			return -1; 	
+
+			close(fd_write);
+
+		}
+		//file to get input from (<)
+		if (pipeline->input_filename) { 
+			int fd_write2 = open(pipeline->input_filename,O_RDONLY,0644);
+			dup2(fd_write2,STDIN_FILENO);
+			execvp(pipeline->argv[0],pipeline->argv); 
+			perror("execvp");
+			return -1; 			//child failed - returns dispatch pass the results of the chain
+
+			close(fd_write2);
+		}
 	}
 	else if (child_pid > 0) {
+		if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
+			close(fd[1]); //Close write
+		}
 		waitpid(child_pid,&status, 0);
-		//Returns the exit status of the child. 
+
+	}
+	
+	//Parent sends data to the child 
+	if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
+		int child_pid2 = fork();
+		if (child_pid2 == 0) {
+			dup2(fd[0],STDIN_FILENO);
+			execvp(pipeline->argv[0],pipeline->argv); 
+			perror("execvp");
+			return -1; 		
+		}
+
+		else if (child_pid2 > 0) {
+			close(fd[0]);		//Close read
+			waitpid(child_pid2,&status, 0);
+
+		}
+
 	}
 
+ 
 	return status;
 	
 	
 }
-
-
-
-
-	/*
-	 * Note: this is where you'll start implementing the project.
-	 *
-	 * It's the only function with a "TODO".  However, if you try
-	 * and squeeze your entire external command logic into a
-	 * single routine with no helper functions, you'll quickly
-	 * find your code becomes sloppy and unmaintainable.
-	 *
-	 * It's up to *you* to structure your software cleanly.  Write
-	 * plenty of helper functions, and even start making yourself
-	 * new files if you need.
-	 *
-	 * For D1: you only need to support running a single command
-	 * (not a chain of commands in a pipeline), with no input or
-	 * output files (output to stdout only).  In other words, you
-	 * may live with the assumption that the "input_file" field in
-	 * the pipeline struct you are given is NULL, and that
-	 * "output_type" will always be COMMAND_OUTPUT_STDOUT.
-	 *
-	 * For D2: you'll extend this function to support input and
-	 * output files, as well as pipeline functionality.
-	 *
-	 * Good luck!
-	 */
-
-
-
-
-	
-
 
 /**
  * dispatch_parsed_command() - run a command after it has been parsed
