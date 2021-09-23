@@ -31,24 +31,57 @@
  */
 
 
-// static void run_command(struct command* pipeline, int fd_in, int fd_out) 
-// {
+static void run_command(struct command* pipeline, int fd_in, int fd_out) 
+{	
+	// //Append case
+	// if (fd_out == 1) {
+	// 	fd_out= open(pipeline->output_filename,O_WRONLY|O_CREAT|O_APPEND,0600);
+	// 			//if neg one
+	// 	if (fd_out == -1) {
+	// 		perror("open");
+	// 		exit(1);
+	// 	}		
 
-	
+	// }
 
+	// //Trunc case
+	// else if (fd_out == 2) {
+	// 	fd_out = open(pipeline->output_filename,O_WRONLY| O_CREAT|O_TRUNC,0600);
+	// 	if (fd_out == -1) {
+	// 		perror("open");
+	// 			exit(1);
 
-// }
+	// }
+
+	// //This will only execute if fd_in is 1
+	// fd_in = open(pipeline->input_filename,O_RDONLY,0644);
+	// if (fd_in == -1) {
+	// 	perror("open");
+	// 	exit(1);
+	// }
+
+	// //dup2 input - will only executes if fd_in is 1 
+	// if(dup2(fd_in,STDIN_FILENO)==-1) {
+	// 	perror("dup2");
+	// 	exit(1);
+	// }
+
+	// //dup2 for out - will only executes if fd_out is 1
+	// if (dup2(fd_out,STDOUT_FILENO) == -1) {
+	// 	perror("dup2");
+	// 	exit(1);
+	// }
+
+}
 
 static int dispatch_external_command(struct command *pipeline)
 {	
 	int fd[2]; //PIPE
 	int child_pid;
 	int status;
+	int fd_in;
+	int fd_write;
 	
-	//  if (pipeline->pipe_to == NULL) {  //not the first command
-	// 	dup2(fd[1],STDOUT_FILENO);
-	// }
-
 
 	if (pipeline->output_type == COMMAND_OUTPUT_PIPE) { //ex: ls -l | wc -l
 		printf("pipe\n");
@@ -64,6 +97,8 @@ static int dispatch_external_command(struct command *pipeline)
 
 		if (child_pid == 0) {
 		
+
+		//START OF THE PIPE STUFF /////////////////////////////////////////////////////////////
 			//Send the info through output side of pipe
 			dup2(fd[1], STDOUT_FILENO);
 			//Child process closes up input side of pipe
@@ -102,6 +137,8 @@ static int dispatch_external_command(struct command *pipeline)
 			return status; 
 
 		}	
+
+		////END OF THE PIPE STUFF/////////
 		
 
 	}
@@ -119,7 +156,7 @@ static int dispatch_external_command(struct command *pipeline)
 		else if (child_pid == 0) {
 			
 			if (pipeline->input_filename) { 	   //you have an input 
-				int fd_in = open(pipeline->input_filename,O_RDONLY,0644);
+				fd_in = open(pipeline->input_filename,O_RDONLY,0644);
 				if (fd_in == -1) {
 					perror("open");
 					exit(1);
@@ -132,7 +169,7 @@ static int dispatch_external_command(struct command *pipeline)
 			
 			}
 			if (pipeline->output_type == COMMAND_OUTPUT_FILE_APPEND) {
-				int fd_write = open(pipeline->output_filename,O_WRONLY|O_CREAT|O_APPEND,0600);
+				fd_write = open(pipeline->output_filename,O_WRONLY|O_CREAT|O_APPEND,0600);
 				//if neg one
 				if (fd_write == -1) {
 					perror("open");
@@ -146,7 +183,7 @@ static int dispatch_external_command(struct command *pipeline)
 
 			}
 			else if (pipeline->output_type == COMMAND_OUTPUT_FILE_TRUNCATE) {
-				int fd_write = open(pipeline->output_filename,O_WRONLY| O_CREAT|O_TRUNC,0600);
+				fd_write = open(pipeline->output_filename,O_WRONLY| O_CREAT|O_TRUNC,0600);
 				if (fd_write == -1) {
 					perror("open");
 					exit(1);
