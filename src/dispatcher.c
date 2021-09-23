@@ -30,105 +30,149 @@
  * pipeline.
  */
 
-//Does this need to be in dispatcher.h?
-static int spawn_child(int in, int out, struct command *pipeline)
-{
-	//Dup2 write
 
-	//Dup2 read 
+// static void run_command(struct command* pipeline, int fd_in, int fd_out) 
+// {
 
-	//Execvp()
-
-	//Check if there is another pipe & call spawn_child(pipe output, output,command)
+	
 
 
+// }
 
-}
 static int dispatch_external_command(struct command *pipeline)
 {	
-	//STDIN_FILENO
-	//STDOUT_FILENO - file decriptor
+	int fd[2]; //PIPE
+	int child_pid;
+	int status;
+	
+	//  if (pipeline->pipe_to == NULL) {  //not the first command
+	// 	dup2(fd[1],STDOUT_FILENO);
+	// }
 
-	int status = 0; 
-	int fd[2]; //list of 2 ints
 
-	//1. Check if the command has > or >>
-
-	//2. Check if the command has <
-
-	//3. Check if command has a pipe
-
-	if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
+	if (pipeline->output_type == COMMAND_OUTPUT_PIPE) { //ex: ls -l | wc -l
+		printf("pipe\n");
 		pipe(fd);
+
+		//handle error
+		if (pipe(fd) == -1) {
+			perror("pipe");
+			exit(EXIT_FAILURE);
+		}
+
+		child_pid = fork(); //first fork
+
+		if (child_pid == 0) {
+		
+			//Send the info through output side of pipe
+			dup2(fd[1], STDOUT_FILENO);
+			//Child process closes up input side of pipe
+			close(fd[0]);
+			close(fd[1]);
+
+			execvp(pipeline->argv[0],pipeline->argv); 
+			perror("execvp");
+			return -1;
+		}
+
+		else {
+			child_pid = fork(); 
+
+			if (child_pid ==0) {
+
+				dup2(fd[0],STDIN_FILENO);
+				//close write end (output side)
+				close(fd[1]);
+				//close read end
+				close(fd[0]);
+
+				execvp(pipeline->argv[0],pipeline->argv); 
+				perror("execvp");
+				return -1; 
+
+			}
+
+			else {
+				close(fd[0]);
+				close(fd[1]);
+				waitpid(child_pid,&status, 0);
+
+			}
+			
+			return status; 
+
+		}	
+		
+
 	}
+
+	else  {	//D1 with file redirections (ex: echo hello > test.txt)
+
+		status = 0;
+		//Ceates a new process by duplicating the calling process
+		child_pid = fork(); 
+
+		if (child_pid < 0) {
+			fprintf(stderr, "fork failed\n");
+			exit(1);
+		} 
+		else if (child_pid == 0) {
+			
+			if (pipeline->input_filename) { 	   //you have an input 
+				int fd_in = open(pipeline->input_filename,O_RDONLY,0644);
+				if (fd_in == -1) {
+					perror("open");
+					exit(1);
+				}
+
+				if(dup2(fd_in,STDIN_FILENO)==-1) {
+					perror("dup2");
+					exit(1);
+				}
+			
+			}
+			if (pipeline->output_type == COMMAND_OUTPUT_FILE_APPEND) {
+				int fd_write = open(pipeline->output_filename,O_WRONLY|O_CREAT|O_APPEND,0600);
+				//if neg one
+				if (fd_write == -1) {
+					perror("open");
+					exit(1);
+				}
+				if(dup2(fd_write,STDOUT_FILENO)==-1) {
+					perror("dup2");
+					exit(1);
+				}
+
+
+			}
+			else if (pipeline->output_type == COMMAND_OUTPUT_FILE_TRUNCATE) {
+				int fd_write = open(pipeline->output_filename,O_WRONLY| O_CREAT|O_TRUNC,0600);
+				if (fd_write == -1) {
+					perror("open");
+					exit(1);
+				}
+				if (dup2(fd_write,STDOUT_FILENO) == -1) {
+					perror("dup2");
+					exit(1);
+				}
+			}
+
+			execvp(pipeline->argv[0],pipeline->argv); 
+			perror("execvp");
 	
-	//Ceates a new process by duplicating the calling process
-	int child_pid = fork(); 
-	
-
-	if (child_pid < 0) {
-		fprintf(stderr, "fork failed\n");
-		exit(1);
-	} 
-	else if (child_pid == 0) {
-		if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
-			close(fd[0]);		//Close read end
-			dup2(fd[2], STDOUT_FILENO); //Child closes read end, pipe filled. 
-			execvp(pipeline->argv[0],pipeline->argv); 
-			perror("execvp");
-			return -1; 
+			return -1;
+			 			
 		}
-		//Write output  (> and >>)
-		if ((pipeline->output_type == COMMAND_OUTPUT_FILE_APPEND) || (pipeline->output_type == COMMAND_OUTPUT_FILE_TRUNCATE)) {
-			//file = 0 //flags read and write 
-			int fd_write = open(pipeline->output_filename,O_RDWR|O_APPEND,0644);
-			dup2(fd[1],fd_write); 
-			execvp(pipeline->argv[0],pipeline->argv); 
-			perror("execvp");
-			return -1; 	
-
-			close(fd_write);
-
-		}
-		//file to get input from (<)
-		if (pipeline->input_filename) { 
-			int fd_write2 = open(pipeline->input_filename,O_RDONLY,0644);
-			dup2(fd_write2,STDIN_FILENO);
-			execvp(pipeline->argv[0],pipeline->argv); 
-			perror("execvp");
-			return -1; 			//child failed - returns dispatch pass the results of the chain
-
-			close(fd_write2);
-		}
-	}
-	else if (child_pid > 0) {
-		if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
-			close(fd[1]); //Close write
-		}
-		waitpid(child_pid,&status, 0);
-
-	}
-	
-	//Parent sends data to the child 
-	if (pipeline->output_type == COMMAND_OUTPUT_PIPE) {
-		int child_pid2 = fork();
-		if (child_pid2 == 0) {
-			dup2(fd[0],STDIN_FILENO);
-			execvp(pipeline->argv[0],pipeline->argv); 
-			perror("execvp");
-			return -1; 		
+		//Parent:
+		else if (child_pid > 0) {
+			waitpid(child_pid,&status, 0);
+			 
 		}
 
-		else if (child_pid2 > 0) {
-			close(fd[0]);		//Close read
-			waitpid(child_pid2,&status, 0);
-
-		}
+		return status;
 
 	}
 
- 
-	return status;
 	
 	
 }
